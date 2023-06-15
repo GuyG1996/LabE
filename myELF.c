@@ -248,14 +248,15 @@ void PrintSectionNames(){
             for (int j = 0; j < section_header_count; j++) {
                 Elf32_Shdr* section_header = &section_header_table[j];
                 char* section_name = &string_table[section_header->sh_name];
+                int section_name_offset = elf_header->e_shoff + section_header->sh_name;
                 if(!debug_mode){
-                    printf("[%2d]\t%-15s\t0x%08X\t0x%08X\t%-10d\t%s\n", j, section_name, section_header->sh_addr,
+                    printf("[%2d]\t%-15s\t0x%08X\t0x%08X\t%06X\t\t%s\n", j, section_name, section_header->sh_addr,
                        section_header->sh_offset, section_header->sh_size, getSectionTypeName(section_header->sh_type));
                 }
                 else{
-                   printf("[%2d]\t%-15s\t0x%08X\t0x%08X\t%-10d\t%-15s\t%-8d\t0x%08X\n", j, section_name,
+                   printf("[%2d]\t%-15s\t0x%08X\t0x%08X\t%06X\t\t%-15s\t%-8d\t%d\n", j, section_name,
                         section_header->sh_addr, section_header->sh_offset, section_header->sh_size,
-                        getSectionTypeName(section_header->sh_type), elf_header->e_shstrndx, section_header->sh_name);
+                        getSectionTypeName(section_header->sh_type), elf_header->e_shstrndx, section_name_offset);
                 }  
             }
             printf("\n");
