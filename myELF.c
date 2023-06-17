@@ -268,14 +268,37 @@ void PrintSectionNames(){
 }
 
 // helper function for printing the symbols tables when you choose 3
-void PrintSymbolTable(Elf32_Shdr* section_header, int num_symbols) {
-    printf("[Index]\tValue\tSection_Index\tSection_Name\tSymbol_Name\n");
-    Elf32_Sym* symbols = (Elf32_Sym*)((char*)ELFArray[ELF_info_index].map_start + section_header->sh_offset);
-    int i;
+void PrintSymbolTable(Elf32_Shdr* section_header, int num_symbols, Elf32_Shdr* section_header_table, int index) {
+    printf("[Index]\tValue\t\tSection_Index\tSection_Name\tSymbol_Name\n");
+    
+    Elf32_Ehdr* elf_start = ELFArray[index].map_start;
+    Elf32_Sym* symbols = (Elf32_Sym*)((char*)elf_start + section_header->sh_offset);
+    Elf32_Shdr* strtab_section = &section_header_table[section_header->sh_link];
+    char* string_table = (char*)elf_start + strtab_section->sh_offset;
+
+    // char* curr_sectionHeader_name = map + str_table->sh_offset + curr_sectionHeader_entry->sh_name;
+
     // Iterate over the symbols and print their information
-    for (i = 0; i < num_symbols; i++) {
+    for (int i = 0; i < num_symbols; i++) {
         Elf32_Sym* symbol = &symbols[i];
+        char* symbol_name = string_table + symbol->st_name;
+        
+        // Retrieve the section name
+        Elf32_Shdr* symbol_section = &section_header_table[symbol->st_shndx];
+        char* section_name;
+        
+        if (symbol->st_shndx == SHN_ABS) {
+            section_name = "ABS";
+        } else if (symbol->st_shndx == SHN_UNDEF) {
+            section_name = "UND";
+        } else {
+            section_name = string_table + symbol_section->sh_name;
+        }
+
+        // printf("Symbol Section Name: %s\n", section_name);
+        printf("[%d]\t%08x\t%d\t\t%-10s\t%s\n", i, symbol->st_value, symbol->st_shndx, section_name, symbol_name);
     }
+    printf("\n");
 }
 
 //choose 3:
@@ -325,7 +348,7 @@ void PrintSymbols(){
                     printf("Symbol table '.dynsym', size: %06X, contains %d entries:\n", dynsym_size, dynsym_num_symbols);
                     // Print any other useful information in debug mode
                 }
-                PrintSymbolTable(dynsym_section, dynsym_num_symbols);
+                PrintSymbolTable(dynsym_section, dynsym_num_symbols, section_header_table, i);
             }
 
             // Print symbols if symbol table (.symtab) exists
@@ -334,7 +357,7 @@ void PrintSymbols(){
                     printf("Symbol table'.symtab', size: %06X, contains %d entries:\n", symtab_size, symtab_num_symbols);
                     // Print any other useful information in debug mode
                 }
-                PrintSymbolTable(symtab_section, symtab_num_symbols);
+                PrintSymbolTable(symtab_section, symtab_num_symbols, section_header_table, i);
             }
         }
     }
@@ -346,7 +369,6 @@ void PrintSymbols(){
 
 // choose 4:
 void CheckFilesforMerge(){
-    // printf("enter the func\n");
     int lastIndexes[2];
     if(ELF_info_index > 1){
         lastIndexes[0] = ELF_info_index - 2;
@@ -364,15 +386,10 @@ void CheckFilesforMerge(){
 
     int fd1 = ELFArray[lastIndexes[0]].fd;
     int fd2 = ELFArray[lastIndexes[1]].fd;
-    // printf("%d\n", fd1);
-    // printf("%d\n", fd2);
     if(fd1 == -1 || fd2 == -1){
         printf("there are no 2 ELF files that have been opened and mapped\n");
         return;
     }
-    // printf("fd is ok\n");
-    
-    // printf("%d ---- %d ", lastIndexes[0], lastIndexes[1]);
     Elf32_Ehdr* elf_header1 = ELFArray[lastIndexes[0]].map_start;
     Elf32_Ehdr* elf_header2 = ELFArray[lastIndexes[1]].map_start;
     Elf32_Shdr* section_header_table1 = (Elf32_Shdr*)((char*)elf_header1 + elf_header1->e_shoff);
@@ -385,7 +402,6 @@ void CheckFilesforMerge(){
     int count1 = 0;
     int count2 = 0;
 
-    // printf("after init variables, before the for\n");
     for(i = 0;i < elf_header1->e_shnum;i++ ){
         Elf32_Shdr* section_header1 = &section_header_table1[i];
         if (section_header1->sh_type == SHT_SYMTAB) {
@@ -398,7 +414,7 @@ void CheckFilesforMerge(){
             string_table1 = (char*)((char*)elf_header1 + section_header_table1[symtab_section1->sh_link].sh_offset);
         }
     }
-    // printf("count1: %d\n", count1);
+    
     for(i = 0;i < elf_header2->e_shnum;i++ ){
         Elf32_Shdr* section_header2 = &section_header_table2[i];
         if (section_header2->sh_type == SHT_SYMTAB) {
@@ -411,17 +427,16 @@ void CheckFilesforMerge(){
             string_table2 = (char*)((char*)elf_header2 + section_header_table2[symtab_section2->sh_link].sh_offset);
         }
     }
-    // printf("count2: %d\n", count2);
-    // printf("%d --- %d\n",count1, count2);
+
     if(count1 != 1 || count2 != 1){
         printf("feature not supported\n");
         return;
     }
-    // printf("symtab sections found ok\n");
+    
     Elf32_Sym* symbols1 = (Elf32_Sym*)((char*)ELFArray[lastIndexes[0]].map_start + symtab_section1->sh_offset);
     Elf32_Sym* symbols2 = (Elf32_Sym*)((char*)ELFArray[lastIndexes[1]].map_start + symtab_section2->sh_offset);
     for(i = 1; i < symtab_section1->sh_size / sizeof(Elf32_Sym); i++ ){
-        // printf("inside the first main for\n");
+        
         Elf32_Sym sym1 = symbols1[i];
         if(sym1.st_name == 0)
             continue;
@@ -432,9 +447,9 @@ void CheckFilesforMerge(){
         // Check if the symbols is DEFINED:
         bool syn1_defined = (sym1.st_shndx != SHN_UNDEF);;
         
-        // printf("inside the first main for, right before the second\n");
+        
         for(j = 1; j < symtab_section2->sh_size / sizeof(Elf32_Sym);j++){
-            // printf("inside the second main for\n");
+            
             Elf32_Sym sym2 = symbols2[j];
             if(sym2.st_name == 0)
                 continue;
@@ -457,7 +472,7 @@ void CheckFilesforMerge(){
 
     // check for symbols from the second table:
     for(i = 1; i < symtab_section2->sh_size / sizeof(Elf32_Sym); i++ ){
-        // printf("inside the third main for\n");
+        
         Elf32_Sym sym2 = symbols2[i];
         if(sym2.st_name == 0)
             continue;
@@ -472,7 +487,7 @@ void CheckFilesforMerge(){
         }
 
         for(j = 1; j < symtab_section1->sh_size / sizeof(Elf32_Sym);j++){
-            // printf("inside the forth main for\n");
+            
             Elf32_Sym sym1 = symbols1[j];
             if(sym1.st_name == 0)
                 continue;
@@ -495,7 +510,59 @@ void CheckFilesforMerge(){
 
 // choose 5:
 void MergeELFFiles(){
-    printf("Not implemented yet.\n");
+    int lastIndexes[2];
+    if(ELF_info_index > 1){
+        lastIndexes[0] = ELF_info_index - 2;
+        lastIndexes[1] = ELF_info_index - 1;
+    }
+    else if(ELF_info_index == 1){
+        lastIndexes[0] = MAX_VARIABLES - 1;
+        lastIndexes[1] = ELF_info_index -1;
+        
+    }
+    else{
+        lastIndexes[0] = MAX_VARIABLES - 2;
+        lastIndexes[1] = MAX_VARIABLES - 1;
+    }
+
+    int fd1 = ELFArray[lastIndexes[0]].fd;
+    int fd2 = ELFArray[lastIndexes[1]].fd;
+    if(fd1 == -1 || fd2 == -1){
+        printf("there are no 2 ELF files that have been opened and mapped to merge\n");
+        return;
+    }
+    Elf32_Ehdr* elf_header1 = ELFArray[lastIndexes[0]].map_start;
+    Elf32_Ehdr* elf_header2 = ELFArray[lastIndexes[1]].map_start;
+
+    // Create the output ELF file
+    int fd_out = open("out.ro", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd_out == -1) {
+        printf("Error creating output ELF file\n");
+        return;
+    }
+
+    // Copy the ELF header from the first file to the output file
+    if (write(fd_out, elf_header1, sizeof(Elf32_Ehdr)) != sizeof(Elf32_Ehdr)) {
+        printf("Error writing ELF header\n");
+        close(fd_out);
+        return;
+    }
+    Elf32_Shdr* section_header_table1 = (Elf32_Shdr*)((char*)elf_header1 + elf_header1->e_shoff);
+    Elf32_Shdr* section_header_table2 = (Elf32_Shdr*)((char*)elf_header2 + elf_header2->e_shoff);
+    size_t section_header_table_size = sizeof(Elf32_Shdr) * elf_header1->e_shnum;
+
+    // Copy the section header table of the first file to the output file
+    if (write(fd_out, section_header_table1, section_header_table_size != section_header_table_size)) {
+        printf("Error writing section header table\n");
+        close(fd_out);
+        return;
+    }
+
+
+
+
+    // Close the output file
+    close(fd_out);
 }
 
 // choose 6:
