@@ -564,6 +564,18 @@ void MergeELFFiles(){
             printf("Error creating output ELF file\n");
             return;
         }
+    
+    write(fd_out, (char*)elf_header1, sizeof(Elf32_Ehdr));
+
+    Elf32_Shdr section_header_merged[elf_header1->e_shnum];
+    memcpy((char*)section_header_merged, (char*)section_header1, elf_header1->e_shnum * sizeof(Elf32_Shdr));
+
+    for(int i=0; i< elf_header1->e_shnum; i++){
+        section_header_merged[i].sh_offset = lseek(fd_out, 0, SEEK_CUR);
+        Elf32_Shdr* thisSection = elf_header1 + elf_header1->e_shoff + ((elf_header1->e_shentsize) * i);
+        char* thisSectionName = elf_header1 + string_table1->sh_offset + thisSection->sh_name;
+        if(strcmp(thisSectionName, ".text"))
+    }
 
 
 
