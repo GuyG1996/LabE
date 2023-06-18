@@ -532,6 +532,54 @@ void MergeELFFiles(){
     Elf32_Ehdr* elf_header1 = ELFArray[lastIndexes[0]].map_start;
     Elf32_Ehdr* elf_header2 = ELFArray[lastIndexes[1]].map_start;
 
+    Elf32_Shdr* section_header_table1 = elf_header1 + elf_header1->e_shoff;
+    Elf32_Shdr* section_header_table2 = elf_header2 + elf_header2->e_shoff;
+
+    Elf32_Shdr* symbo1tab1= NULL;
+    Elf32_Shdr* symbo1tab1 = NULL;
+
+    for(i = 0;i < elf_header1->e_shnum;i++ ){
+        Elf32_Shdr* section_header1 = &section_header_table1[i];
+        if (section_header1->sh_type == SHT_SYMTAB) { 
+               symbo1tab1 = section_header1;
+        }
+        break;
+    }
+    for(i = 0;i < elf_header2->e_shnum;i++ ){
+        Elf32_Shdr* section_header2 = &section_header_table2[i];
+        if (section_header2->sh_type == SHT_SYMTAB) { 
+               symbo1tab2 = section_header2;
+        }
+        break;
+    }
+
+    Elf32_Shdr* string_table1 = elf_header1 + elf_header1->e_shoff + (symbo1tab1->sh_link * elf_header1->e_shentsize);
+    Elf32_Shdr* string_table2 = elf_header2 + elf_header2->e_shoff + (symbo1tab2->sh_link * elf_header2->e_shentsize);
+
+    int symtabsize1 = symbo1tab1->sh_size;
+    int symtabsize2 = symbo1tab1->sh_size;
+    
+    int fd_out = open("out.ro", O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        if (fd_out == -1) {
+            printf("Error creating output ELF file\n");
+            return;
+        }
+    
+    write(fd_out, (char*)elf_header1, sizeof(Elf32_Ehdr));
+
+    Elf32_Shdr section_header_merged[elf_header1->e_shnum];
+    memcpy((char*)section_header_merged, (char*)section_header1, elf_header1->e_shnum * sizeof(Elf32_Shdr));
+
+    for(int i=0; i< elf_header1->e_shnum; i++){
+        section_header_merged[i].sh_offset = lseek(fd_out, 0, SEEK_CUR);
+        Elf32_Shdr* thisSection = elf_header1 + elf_header1->e_shoff + ((elf_header1->e_shentsize) * i);
+        char* thisSectionName = elf_header1 + string_table1->sh_offset + thisSection->sh_name;
+        if(strcmp(thisSectionName, ".text"))
+    }
+
+
+
+//////////////////////////////////////////////////
     // Create the output ELF file
     int fd_out = open("out.ro", O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd_out == -1) {
@@ -628,7 +676,9 @@ void MergeELFFiles(){
                     else{
                         // Append the relevant section from the second file
                         lseek(fd2, section_header_table2[j].sh_offset, SEEK_SET);
+                        printf("check155\n");
                         while ((bytes_read = read(fd2, buffer, sizeof(buffer))) > 0) {
+                        
                             if (write(fd_out, buffer, bytes_read) != bytes_read) {
                                 printf("Error writing merged section\n");
                                 close(fd_out);
@@ -644,7 +694,7 @@ void MergeELFFiles(){
                     Elf32_Word newsize = section_header_table1[i].sh_size + section_header_table2[j].sh_size;
                     printf("check13 %d\n",newsize);
                     // Update the section header table entry for the merged section
-                    
+
                     // Elf32_Off newoffset = lseek(fd_out, 0, SEEK_CUR) - section_header_table1[i].sh_size;
                     // printf("check14\n");
                     
@@ -670,6 +720,7 @@ void MergeELFFiles(){
         return;
     }
 
+   
     // Close the output ELF file
     close(fd_out);
 
