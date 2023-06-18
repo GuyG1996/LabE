@@ -276,15 +276,13 @@ void PrintSymbolTable(Elf32_Shdr* section_header, int num_symbols, Elf32_Shdr* s
     Elf32_Shdr* strtab_section = &section_header_table[section_header->sh_link];
     char* string_table = (char*)elf_start + strtab_section->sh_offset;
 
-    // char* curr_sectionHeader_name = map + str_table->sh_offset + curr_sectionHeader_entry->sh_name;
-
     // Iterate over the symbols and print their information
     for (int i = 0; i < num_symbols; i++) {
         Elf32_Sym* symbol = &symbols[i];
         char* symbol_name = string_table + symbol->st_name;
         
         // Retrieve the section name
-        Elf32_Shdr* symbol_section = &section_header_table[symbol->st_shndx];
+        // Elf32_Shdr* symbol_section = &section_header_table[symbol->st_shndx];
         char* section_name;
         
         if (symbol->st_shndx == SHN_ABS) {
@@ -292,7 +290,7 @@ void PrintSymbolTable(Elf32_Shdr* section_header, int num_symbols, Elf32_Shdr* s
         } else if (symbol->st_shndx == SHN_UNDEF) {
             section_name = "UND";
         } else {
-            section_name = string_table + symbol_section->sh_name;
+            section_name = (char*)((char*)elf_start + section_header_table[elf_start->e_shstrndx].sh_offset + section_header_table[symbol->st_shndx].sh_name);
         }
 
         // printf("Symbol Section Name: %s\n", section_name);
@@ -549,7 +547,9 @@ void MergeELFFiles(){
     }
     Elf32_Shdr* section_header_table1 = (Elf32_Shdr*)((char*)elf_header1 + elf_header1->e_shoff);
     Elf32_Shdr* section_header_table2 = (Elf32_Shdr*)((char*)elf_header2 + elf_header2->e_shoff);
+    printf("check\n");
     size_t section_header_table_size = sizeof(Elf32_Shdr) * elf_header1->e_shnum;
+    printf("check2\n");
 
     // Copy the section header table of the first file to the output file
     if (write(fd_out, section_header_table1, section_header_table_size) != section_header_table_size) {
@@ -557,14 +557,17 @@ void MergeELFFiles(){
         close(fd_out);
         return;
     }
+    printf("check3\n");
 
     // Loop over the entries of the new section header table
     for (int i = 0; i < elf_header1->e_shnum; i++) {
         Elf32_Shdr* section_header1 = &section_header_table1[i];
+        
         // Process each section according to the merging scheme
         lseek(fd1, section_header_table1[i].sh_offset, SEEK_SET);
         char buffer[4096];
         ssize_t bytes_read;
+        printf("check4\n");
         while ((bytes_read = read(fd1, buffer, sizeof(buffer))) > 0) {
             if (write(fd_out, buffer, bytes_read) != bytes_read) {
                 printf("Error writing merged section\n");
@@ -572,19 +575,27 @@ void MergeELFFiles(){
                 return;
             }
         }
-        
+        printf("check5\n");
+
+        char* section_name1 = (char*)((char*)elf_header1 + section_header_table1[elf_header1->e_shstrndx].sh_offset + section_header_table1[i].sh_name);
+        printf("check6 %s\n", section_name1);
         // if it is one of those four enter the second loop
-        if(strcmp((char*)section_header_table1[i].sh_name, ".text") == 0 ||
-            strcmp((char*)section_header_table1[i].sh_name, ".rodata") == 0 ||
-            strcmp((char*)section_header_table1[i].sh_name, ".data") == 0 || 
-            strcmp((char*)section_header_table1[i].sh_name, ".symtab") == 0){
+        if(strcmp(section_name1, ".text") == 0 ||
+            strcmp(section_name1, ".rodata") == 0 ||
+            strcmp(section_name1, ".data") == 0 || 
+            strcmp(section_name1, ".symtab") == 0){
+
+            printf("check7\n");                
         
             // Find the corresponding section in the second file
             for (int j = 0; j < elf_header2->e_shnum; j++) {
                 Elf32_Shdr* section_header2 = &section_header_table2[j];
-                if (strcmp((char*)section_header_table2[j].sh_name, (char*)section_header_table1[i].sh_name) == 0) {
-                    if(strcmp((char*)section_header_table1[i].sh_name, ".symtab") == 0){
-
+                char* section_name2 = (char*)((char*)elf_header2 + section_header_table2[elf_header2->e_shstrndx].sh_offset + section_header_table2[j].sh_name);
+                printf("check8 %s\n", section_name2);
+                if (strcmp(section_name2, section_name1) == 0) {
+                    printf("check9\n");
+                    if(strcmp(section_name2, ".symtab") == 0){
+            
                         Elf32_Sym* symbol_table1 = (Elf32_Sym*)((char*)elf_header1 + section_header_table1[i].sh_offset);
                         int symbol_table_size1 = section_header_table1[i].sh_size / sizeof(Elf32_Sym);
 
@@ -624,16 +635,26 @@ void MergeELFFiles(){
                                 return;
                             }
                         }
+                        printf("check10\n");
                     }
 
+
+                    printf("check11 %d\n",section_header_table1[i].sh_size );
+                    printf("check12 %d\n",section_header_table2[j].sh_size );
+                    Elf32_Word newsize = section_header_table1[i].sh_size + section_header_table2[j].sh_size;
+                    printf("check13 %d\n",newsize);
                     // Update the section header table entry for the merged section
-                    section_header_table1[i].sh_size += section_header_table2[j].sh_size;
-                    section_header_table1[i].sh_offset = lseek(fd_out, 0, SEEK_CUR) - section_header_table1[i].sh_size;
-                    if (write(fd_out, &section_header_table1[i], sizeof(Elf32_Shdr)) != sizeof(Elf32_Shdr)) {
+                    // Elf32_Off newoffset = lseek(fd_out, 0, SEEK_CUR) - section_header_table1[i].sh_size;
+                    // printf("check14\n");
+                    
+                   lseek(fd_out, 0, section_header_table1[i].sh_size);
+                    if (write(fd_out, &newsize, sizeof(Elf32_Word)) != sizeof(Elf32_Word)) {
                         printf("Error writing merged section header\n");
                         close(fd_out);
                         return;
                     }
+                    printf("check14\n");
+                    
                     break; // Found the relevant section in the second file, exit the loop
                 }
             }
