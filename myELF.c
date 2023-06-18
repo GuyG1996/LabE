@@ -644,6 +644,7 @@ void MergeELFFiles(){
                     Elf32_Word newsize = section_header_table1[i].sh_size + section_header_table2[j].sh_size;
                     printf("check13 %d\n",newsize);
                     // Update the section header table entry for the merged section
+                    
                     // Elf32_Off newoffset = lseek(fd_out, 0, SEEK_CUR) - section_header_table1[i].sh_size;
                     // printf("check14\n");
                     
