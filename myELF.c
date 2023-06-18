@@ -552,17 +552,106 @@ void MergeELFFiles(){
     size_t section_header_table_size = sizeof(Elf32_Shdr) * elf_header1->e_shnum;
 
     // Copy the section header table of the first file to the output file
-    if (write(fd_out, section_header_table1, section_header_table_size != section_header_table_size)) {
+    if (write(fd_out, section_header_table1, section_header_table_size) != section_header_table_size) {
         printf("Error writing section header table\n");
         close(fd_out);
         return;
     }
 
+    // Loop over the entries of the new section header table
+    for (int i = 0; i < elf_header1->e_shnum; i++) {
+        Elf32_Shdr* section_header1 = &section_header_table1[i];
+        // Process each section according to the merging scheme
+        lseek(fd1, section_header_table1[i].sh_offset, SEEK_SET);
+        char buffer[4096];
+        ssize_t bytes_read;
+        while ((bytes_read = read(fd1, buffer, sizeof(buffer))) > 0) {
+            if (write(fd_out, buffer, bytes_read) != bytes_read) {
+                printf("Error writing merged section\n");
+                close(fd_out);
+                return;
+            }
+        }
+        
+        // if it is one of those four enter the second loop
+        if(strcmp((char*)section_header_table1[i].sh_name, ".text") == 0 ||
+            strcmp((char*)section_header_table1[i].sh_name, ".rodata") == 0 ||
+            strcmp((char*)section_header_table1[i].sh_name, ".data") == 0 || 
+            strcmp((char*)section_header_table1[i].sh_name, ".symtab") == 0){
+        
+            // Find the corresponding section in the second file
+            for (int j = 0; j < elf_header2->e_shnum; j++) {
+                Elf32_Shdr* section_header2 = &section_header_table2[j];
+                if (strcmp((char*)section_header_table2[j].sh_name, (char*)section_header_table1[i].sh_name) == 0) {
+                    if(strcmp((char*)section_header_table1[i].sh_name, ".symtab") == 0){
 
+                        Elf32_Sym* symbol_table1 = (Elf32_Sym*)((char*)elf_header1 + section_header_table1[i].sh_offset);
+                        int symbol_table_size1 = section_header_table1[i].sh_size / sizeof(Elf32_Sym);
 
+                        Elf32_Sym* symbol_table2 = (Elf32_Sym*)((char*)elf_header2 + section_header_table2[j].sh_offset);
+                        int symbol_table_size2 = section_header_table2[i].sh_size / sizeof(Elf32_Sym);
+                        for(int k = 0;k < symbol_table_size1; k++){
+                            Elf32_Sym sym1 = symbol_table1[k];
+                            if((sym1.st_name == 0) | (sym1.st_shndx != SHN_UNDEF)){
+                                continue;
+                            }
+                            char* string_table1 = (char*)((char*)elf_header1 + section_header_table1[section_header1->sh_link].sh_offset);
+                            char* symbol_name1 = string_table1 + sym1.st_name;
+                                                        
+                            for(int p = 0;p < symbol_table_size2; p++){
+                                Elf32_Sym sym2 = symbol_table2[p];
+                                char* string_table2 = (char*)((char*)elf_header2 + section_header_table2[section_header2->sh_link].sh_offset);
+                                char* symbol_name2 = string_table2 + sym2.st_name;
+                                if(strcmp(symbol_name2, symbol_name1) == 0){
+                                    // Update the symbol entry in the first file with the details from the second file
+                                    symbol_table1[k].st_value = symbol_table2[p].st_value;
+                                    symbol_table1[k].st_size = symbol_table2[p].st_size;
+                                    symbol_table1[k].st_info = symbol_table2[p].st_info;
+                                    symbol_table1[k].st_other = symbol_table2[p].st_other;
+                                    symbol_table1[k].st_shndx = symbol_table2[p].st_shndx;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    else{
+                        // Append the relevant section from the second file
+                        lseek(fd2, section_header_table2[j].sh_offset, SEEK_SET);
+                        while ((bytes_read = read(fd2, buffer, sizeof(buffer))) > 0) {
+                            if (write(fd_out, buffer, bytes_read) != bytes_read) {
+                                printf("Error writing merged section\n");
+                                close(fd_out);
+                                return;
+                            }
+                        }
+                    }
 
-    // Close the output file
+                    // Update the section header table entry for the merged section
+                    section_header_table1[i].sh_size += section_header_table2[j].sh_size;
+                    section_header_table1[i].sh_offset = lseek(fd_out, 0, SEEK_CUR) - section_header_table1[i].sh_size;
+                    if (write(fd_out, &section_header_table1[i], sizeof(Elf32_Shdr)) != sizeof(Elf32_Shdr)) {
+                        printf("Error writing merged section header\n");
+                        close(fd_out);
+                        return;
+                    }
+                    break; // Found the relevant section in the second file, exit the loop
+                }
+            }
+        }
+    }
+    // Fix the "e_shoff" field in the ELF header
+    elf_header1->e_shoff = lseek(fd_out, 0, SEEK_CUR);
+    lseek(fd_out, 0, SEEK_SET);
+    if (write(fd_out, elf_header1, sizeof(Elf32_Ehdr)) != sizeof(Elf32_Ehdr)) {
+        printf("Error writing updated ELF header\n");
+        close(fd_out);
+        return;
+    }
+
+    // Close the output ELF file
     close(fd_out);
+
+    printf("Merged ELF files successfully\n");
 }
 
 // choose 6:
